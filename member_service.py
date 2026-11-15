@@ -1,30 +1,11 @@
 
 import re
-import sqlite3
 from datetime import date
 
-
-def list_members():
-    conn = sqlite3.connect("library.db")
-    rows = conn.execute("SELECT * FROM members").fetchall()
-    conn.close()
-
-    return [
-        {"id": r[0], "name": r[1], "email": r[2], "type": r[3]}
-        for r in rows
-    ]
+import member_repository
 
 
-def get_member(member_id):
-    conn = sqlite3.connect("library.db")
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (member_id,)
-    ).fetchone()
-    conn.close()
-
-    if member is None:
-        return None
-
+def member_to_dict(member):
     return {
         "id": member[0],
         "name": member[1],
@@ -33,62 +14,55 @@ def get_member(member_id):
     }
 
 
+def list_members():
+    rows = member_repository.list_members()
+    return [member_to_dict(row) for row in rows]
+
+
+def get_member(member_id):
+    member = member_repository.get_member(member_id)
+
+    if member is None:
+        return None
+
+    return member_to_dict(member)
+
+
 def create_member(data):
     if not data.get("name"):
         return {"error": "name is required"}, 400
 
     email = str(data.get("email", ""))
+
     if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is None:
         return {"error": "invalid email"}, 400
 
     member_type = data.get("type", "student")
+
     if member_type not in ("student", "staff"):
         return {"error": "type must be student or staff"}, 400
 
-    conn = sqlite3.connect("library.db")
-
-    existing = conn.execute(
-        "SELECT * FROM members WHERE email = ?", (email,)
-    ).fetchone()
+    existing = member_repository.get_member_by_email(email)
 
     if existing is not None:
-        conn.close()
         return {"error": "email already registered"}, 409
 
-    cur = conn.execute(
-        "INSERT INTO members (name, email, type) VALUES (?, ?, ?)",
-        (data["name"], email, member_type),
+    member = member_repository.insert_member(
+        data["name"],
+        email,
+        member_type
     )
-    conn.commit()
 
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (cur.lastrowid,)
-    ).fetchone()
-    conn.close()
-
-    return {
-        "id": member[0],
-        "name": member[1],
-        "email": member[2],
-        "type": member[3],
-    }, 201
+    return member_to_dict(member), 201
 
 
 def get_member_loans(member_id):
-    conn = sqlite3.connect("library.db")
-
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (member_id,)
-    ).fetchone()
+    member = member_repository.get_member(member_id)
 
     if member is None:
-        conn.close()
         return {"error": "member not found"}, 404
 
-    rows = conn.execute(
-        "SELECT * FROM loans WHERE member_id = ?", (member_id,)
-    ).fetchall()
-    conn.close()
+    rows = member_repository.get_member_loans(member_id)
 
     owed = 0
     open_loans = 0
