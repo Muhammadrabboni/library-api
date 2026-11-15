@@ -1,42 +1,8 @@
 
-import sqlite3
+import book_repository
 
 
-def list_books(available_only=False):
-    conn = sqlite3.connect("library.db")
-
-    if available_only:
-        rows = conn.execute(
-            "SELECT * FROM books WHERE available = 1"
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM books").fetchall()
-
-    conn.close()
-
-    return [
-        {
-            "id": row[0],
-            "title": row[1],
-            "author": row[2],
-            "isbn": row[3],
-            "available": bool(row[4]),
-        }
-        for row in rows
-    ]
-
-
-def get_book(book_id):
-    conn = sqlite3.connect("library.db")
-    row = conn.execute(
-        "SELECT * FROM books WHERE id = ?",
-        (book_id,)
-    ).fetchone()
-    conn.close()
-
-    if row is None:
-        return None
-
+def book_to_dict(row):
     return {
         "id": row[0],
         "title": row[1],
@@ -44,6 +10,20 @@ def get_book(book_id):
         "isbn": row[3],
         "available": bool(row[4]),
     }
+
+
+def list_books(available_only=False):
+    rows = book_repository.list_books(available_only)
+    return [book_to_dict(row) for row in rows]
+
+
+def get_book(book_id):
+    row = book_repository.get_book(book_id)
+
+    if row is None:
+        return None
+
+    return book_to_dict(row)
 
 
 def create_book(data):
@@ -56,58 +36,20 @@ def create_book(data):
     if not digits.isdigit() or len(digits) not in (10, 13):
         return {"error": "invalid isbn"}, 400
 
-    conn = sqlite3.connect("library.db")
+    row = book_repository.insert_book(data)
 
-    cursor = conn.execute(
-        """
-        INSERT INTO books (title, author, isbn, available)
-        VALUES (?, ?, ?, 1)
-        """,
-        (data["title"], data["author"], data["isbn"]),
-    )
-
-    conn.commit()
-
-    row = conn.execute(
-        "SELECT * FROM books WHERE id = ?",
-        (cursor.lastrowid,)
-    ).fetchone()
-
-    conn.close()
-
-    book = {
-        "id": row[0],
-        "title": row[1],
-        "author": row[2],
-        "isbn": row[3],
-        "available": bool(row[4]),
-    }
-
-    return book, 201
+    return book_to_dict(row), 201
 
 
 def delete_book(book_id):
-    conn = sqlite3.connect("library.db")
-
-    row = conn.execute(
-        "SELECT * FROM books WHERE id = ?",
-        (book_id,)
-    ).fetchone()
+    row = book_repository.get_book(book_id)
 
     if row is None:
-        conn.close()
         return {"error": "book not found"}, 404
 
     if row[4] == 0:
-        conn.close()
         return {"error": "book is on loan"}, 409
 
-    conn.execute(
-        "DELETE FROM books WHERE id = ?",
-        (book_id,)
-    )
-
-    conn.commit()
-    conn.close()
+    book_repository.delete_book(book_id)
 
     return None, 204
