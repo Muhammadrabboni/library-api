@@ -1,7 +1,11 @@
+
 from datetime import date, timedelta
-from utils.validation import is_valid_date
+
 import loan_repository
+
 from errors import error_response
+from notifications import send_notification
+from utils.validation import is_valid_date
 from utils.fines import money, calculate_days_late, calculate_fine
 from utils.checks import (
     is_book_available,
@@ -10,7 +14,6 @@ from utils.checks import (
     get_loan_limit,
 )
 
-DAILY_FINE = 0.50
 LOAN_PERIOD = 14
 
 
@@ -36,13 +39,6 @@ def loan_to_dict(loan, include_current_fine=False):
         result["current_fine"] = money(current_fine)
 
     return result
-
-
-def write_notification(email, subject, body):
-    with open("outbox.txt", "a") as file:
-        file.write(
-            f"TO: {email} | SUBJECT: {subject} | BODY: {body}\n"
-        )
 
 
 def list_loans(overdue_only=False):
@@ -99,10 +95,7 @@ def create_loan(data):
     for loan in rows:
         if loan[4] == 0:
             open_loans += 1
-            days_late = calculate_days_late(loan[3])
-
-            if days_late > 0:
-                owed += days_late * DAILY_FINE
+            owed += calculate_fine(loan[3])
 
         elif loan[6] == 0:
             owed += loan[5]
@@ -126,7 +119,7 @@ def create_loan(data):
         today.isoformat()
     )
 
-    write_notification(
+    send_notification(
         member[2],
         "Book checked out",
         "You checked out " + book[1],
@@ -152,7 +145,7 @@ def return_book(loan_id):
     book = loan_repository.get_book(loan[1])
     updated = loan_repository.get_loan(loan_id)
 
-    write_notification(
+    send_notification(
         member[2],
         "Book returned",
         "You returned " + book[1] + ". Fine: $" + str(money(fine)),
@@ -186,7 +179,7 @@ def renew_loan(loan_id):
     book = loan_repository.get_book(loan[1])
     updated = loan_repository.get_loan(loan_id)
 
-    write_notification(
+    send_notification(
         member[2],
         "Loan renewed",
         "You renewed " + book[1],
@@ -212,7 +205,7 @@ def pay_fine(loan_id):
     member = loan_repository.get_member(loan[2])
     updated = loan_repository.get_loan(loan_id)
 
-    write_notification(
+    send_notification(
         member[2],
         "Fine paid",
         "We received $" + str(money(loan[5])),

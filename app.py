@@ -3,18 +3,15 @@ from books import book_bp
 from loans import loan_bp
 from utils.fines import money, calculate_days_late, calculate_fine
 import os
-import re
 import sqlite3
 from datetime import date, timedelta
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 app.register_blueprint(book_bp)
 app.register_blueprint(member_bp)
 app.register_blueprint(loan_bp)
-CURRENT_MEMBER = None
-
 
 def init_db():
     conn = sqlite3.connect("library.db")
@@ -61,43 +58,6 @@ def init_db():
     )
     conn.commit()
     conn.close()
-
-
-# ---------- helpers ----------
-
-
-def check(value, kind):
-    if kind == "email":
-        return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(value)) is not None
-    elif kind == "isbn":
-        digits = str(value).replace("-", "")
-        return digits.isdigit() and len(digits) in (10, 13)
-    elif kind == "date":
-        try:
-            date.fromisoformat(str(value))
-            return True
-        except ValueError:
-            return False
-    elif kind == "member_type":
-        return value in ("student", "staff")
-    return False
-
-
-def notify(kind, title="", send=True):
-    if not send:
-        return
-    if kind == "checkout":
-        subject = "Book checked out"
-        body = "You checked out " + title
-    elif kind == "renew":
-        subject = "Loan renewed"
-        body = "You renewed " + title
-    else:
-        subject = "Library notice"
-        body = title
-    with open("outbox.txt", "a") as f:
-        f.write("TO: " + CURRENT_MEMBER[2] + " | SUBJECT: " + subject + " | BODY: " + body + "\n")
-
 
 
 # ---------- reports ----------

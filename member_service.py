@@ -1,7 +1,8 @@
-from datetime import date
+
 from errors import error_response
 from utils.validation import is_valid_email, is_valid_member_type
 from utils.checks import get_loan_limit
+from utils.fines import calculate_fine, money
 
 import member_repository
 
@@ -72,10 +73,7 @@ def get_member_loans(member_id):
     for loan in rows:
         if loan[4] == 0:
             open_loans += 1
-            days_late = (date.today() - date.fromisoformat(loan[3])).days
-
-            if days_late > 0:
-                owed += days_late * 0.5
+            owed += calculate_fine(loan[3])
 
         elif loan[6] == 0:
             owed += loan[5]
@@ -85,7 +83,7 @@ def get_member_loans(member_id):
             "book_id": loan[1],
             "due_date": loan[3],
             "returned": bool(loan[4]),
-            "fine": round(float(loan[5]), 2),
+            "fine": money(loan[5]),
             "fine_paid": bool(loan[6]),
         })
 
@@ -93,6 +91,6 @@ def get_member_loans(member_id):
 
     return {
         "loans": loans,
-        "total_owed": round(float(owed), 2),
+        "total_owed": money(owed),
         "loans_remaining": remaining,
     }, 200
