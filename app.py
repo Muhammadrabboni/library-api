@@ -1,6 +1,7 @@
 from members import member_bp
 from books import book_bp
 from loans import loan_bp
+from utils.fines import money, calculate_days_late, calculate_fine
 import os
 import re
 import sqlite3
@@ -82,10 +83,6 @@ def check(value, kind):
     return False
 
 
-def money(x):
-    return round(float(x), 2)
-
-
 def notify(kind, title="", send=True):
     if not send:
         return
@@ -122,9 +119,9 @@ def report_overdue():
     items = []
     total = 0
     for r in rows:
-        days_late = (date.today() - date.fromisoformat(r[3])).days
+        days_late = calculate_days_late(r[3])
         if days_late > 0:
-            fine = days_late * 0.5
+            fine = calculate_fine(r[3])
             total += fine
             items.append(
                 {"loan_id": r[0], "title": r[1], "member": r[2], "days_late": days_late, "fine": money(fine)}
@@ -143,8 +140,7 @@ def report_summary():
     for loan in rows:
         if loan[4] == 0:
             on_loan += 1
-            days_late = (date.today() - date.fromisoformat(loan[3])).days
-            outstanding += max(0, days_late) * 0.50
+            outstanding += calculate_fine(loan[3])
         elif loan[6] == 0:
             outstanding += loan[5]
     return jsonify({"total_books": total_books, "on_loan": on_loan, "fines_outstanding": money(outstanding)})

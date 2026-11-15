@@ -1,23 +1,16 @@
-
 from datetime import date, timedelta
-
+from utils.validation import is_valid_date
 import loan_repository
-
+from utils.fines import money, calculate_days_late, calculate_fine
+from utils.checks import (
+    is_book_available,
+    is_loan_returned,
+    has_unpaid_fine,
+    get_loan_limit,
+)
 
 DAILY_FINE = 0.50
 LOAN_PERIOD = 14
-
-
-def money(value):
-    return round(float(value), 2)
-
-
-def is_valid_date(value):
-    try:
-        date.fromisoformat(str(value))
-        return True
-    except ValueError:
-        return False
 
 
 def loan_to_dict(loan, include_current_fine=False):
@@ -37,8 +30,7 @@ def loan_to_dict(loan, include_current_fine=False):
         current_fine = loan[5]
 
         if loan[4] == 0:
-            days_late = (date.today() - date.fromisoformat(loan[3])).days
-            current_fine = max(0, days_late) * DAILY_FINE
+            current_fine = calculate_fine(loan[3])
 
         result["current_fine"] = money(current_fine)
 
@@ -57,7 +49,7 @@ def list_loans(overdue_only=False):
     result = []
 
     for loan in rows:
-        days_late = (date.today() - date.fromisoformat(loan[3])).days
+        days_late = calculate_days_late(loan[3])
 
         if overdue_only and (loan[4] == 1 or days_late <= 0):
             continue
@@ -95,7 +87,7 @@ def create_loan(data):
     if member is None:
         return {"error": "member not found"}, 404
 
-    if book[4] == 0:
+    if not is_book_available(book):
         return {"error": "book is not available"}, 409
 
     rows = loan_repository.get_member_loans(data["member_id"])
@@ -106,7 +98,7 @@ def create_loan(data):
     for loan in rows:
         if loan[4] == 0:
             open_loans += 1
-            days_late = (date.today() - date.fromisoformat(loan[3])).days
+            days_late = calculate_days_late(loan[3])
 
             if days_late > 0:
                 owed += days_late * DAILY_FINE
@@ -117,7 +109,7 @@ def create_loan(data):
     if owed > 0:
         return {"error": "member has unpaid fines"}, 409
 
-    limit = 5 if member[3] == "staff" else 3
+    limit = get_loan_limit(member)
 
     if open_loans >= limit:
         return {"error": "loan limit reached"}, 409
@@ -148,11 +140,10 @@ def return_book(loan_id):
     if loan is None:
         return {"error": "loan not found"}, 404
 
-    if loan[4] == 1:
+    if is_loan_returned(loan):
         return {"error": "loan already returned"}, 409
 
-    days_late = (date.today() - date.fromisoformat(loan[3])).days
-    fine = max(0, days_late) * DAILY_FINE
+    fine = calculate_fine(loan[3])
 
     loan_repository.return_loan(loan_id, loan[1], fine)
 
@@ -175,7 +166,7 @@ def renew_loan(loan_id):
     if loan is None:
         return {"error": "loan not found"}, 404
 
-    if loan[4] == 1:
+    if is_loan_returned(loan):
         return {"error": "loan already returned"}, 409
 
     if date.fromisoformat(loan[3]) < date.today():
@@ -212,7 +203,7 @@ def pay_fine(loan_id):
     if loan[4] == 0:
         return {"error": "return the book before paying"}, 409
 
-    if loan[5] <= 0 or loan[6] == 1:
+    if not has_unpaid_fine(loan):
         return {"error": "no fine to pay"}, 409
 
     loan_repository.pay_fine(loan_id)

@@ -1,6 +1,6 @@
-
-import re
 from datetime import date
+from utils.validation import is_valid_email, is_valid_member_type
+from utils.checks import get_loan_limit
 
 import member_repository
 
@@ -34,12 +34,12 @@ def create_member(data):
 
     email = str(data.get("email", ""))
 
-    if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is None:
+    if not is_valid_email(email):
         return {"error": "invalid email"}, 400
 
     member_type = data.get("type", "student")
 
-    if member_type not in ("student", "staff"):
+    if not is_valid_member_type(member_type):
         return {"error": "type must be student or staff"}, 400
 
     existing = member_repository.get_member_by_email(email)
@@ -88,10 +88,7 @@ def get_member_loans(member_id):
             "fine_paid": bool(loan[6]),
         })
 
-    if member[3] == "staff":
-        remaining = 5 - open_loans
-    else:
-        remaining = 3 - open_loans
+    remaining = get_loan_limit(member) - open_loans
 
     return {
         "loans": loans,

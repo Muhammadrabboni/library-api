@@ -1,4 +1,5 @@
 
+from utils.validation import is_valid_isbn
 import book_repository
 
 
@@ -31,9 +32,8 @@ def create_book(data):
         return {"error": "title and author are required"}, 400
 
     isbn = data.get("isbn")
-    digits = str(isbn).replace("-", "")
 
-    if not digits.isdigit() or len(digits) not in (10, 13):
+    if not is_valid_isbn(isbn):
         return {"error": "invalid isbn"}, 400
 
     row = book_repository.insert_book(data)
