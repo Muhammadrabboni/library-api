@@ -1,9 +1,9 @@
 
-import sqlite3
 from datetime import date, timedelta
 
+import loan_repository
 
-DB_NAME = "library.db"
+
 DAILY_FINE = 0.50
 LOAN_PERIOD = 14
 
@@ -53,34 +53,24 @@ def write_notification(email, subject, body):
 
 
 def list_loans(overdue_only=False):
-    conn = sqlite3.connect(DB_NAME)
-    rows = conn.execute("SELECT * FROM loans").fetchall()
-    conn.close()
-
+    rows = loan_repository.list_loans()
     result = []
 
     for loan in rows:
-        current_fine = loan[5]
         days_late = (date.today() - date.fromisoformat(loan[3])).days
-
-        if loan[4] == 0:
-            current_fine = max(0, days_late) * DAILY_FINE
 
         if overdue_only and (loan[4] == 1 or days_late <= 0):
             continue
 
-        item = loan_to_dict(loan, include_current_fine=True)
-        result.append(item)
+        result.append(
+            loan_to_dict(loan, include_current_fine=True)
+        )
 
     return result
 
 
 def get_loan(loan_id):
-    conn = sqlite3.connect(DB_NAME)
-    loan = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
-    conn.close()
+    loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
         return {"error": "loan not found"}, 404
@@ -95,31 +85,20 @@ def create_loan(data):
     if data.get("due_date") and not is_valid_date(data["due_date"]):
         return {"error": "invalid due_date"}, 400
 
-    conn = sqlite3.connect(DB_NAME)
-
-    book = conn.execute(
-        "SELECT * FROM books WHERE id = ?", (data["book_id"],)
-    ).fetchone()
+    book = loan_repository.get_book(data["book_id"])
 
     if book is None:
-        conn.close()
         return {"error": "book not found"}, 404
 
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (data["member_id"],)
-    ).fetchone()
+    member = loan_repository.get_member(data["member_id"])
 
     if member is None:
-        conn.close()
         return {"error": "member not found"}, 404
 
     if book[4] == 0:
-        conn.close()
         return {"error": "book is not available"}, 409
 
-    rows = conn.execute(
-        "SELECT * FROM loans WHERE member_id = ?", (data["member_id"],)
-    ).fetchall()
+    rows = loan_repository.get_member_loans(data["member_id"])
 
     owed = 0
     open_loans = 0
@@ -131,17 +110,16 @@ def create_loan(data):
 
             if days_late > 0:
                 owed += days_late * DAILY_FINE
+
         elif loan[6] == 0:
             owed += loan[5]
 
     if owed > 0:
-        conn.close()
         return {"error": "member has unpaid fines"}, 409
 
     limit = 5 if member[3] == "staff" else 3
 
     if open_loans >= limit:
-        conn.close()
         return {"error": "loan limit reached"}, 409
 
     today = date.today()
@@ -149,26 +127,11 @@ def create_loan(data):
         today + timedelta(days=LOAN_PERIOD)
     ).isoformat()
 
-    cursor = conn.execute(
-        """
-        INSERT INTO loans (book_id, member_id, due_date, checked_out)
-        VALUES (?, ?, ?, ?)
-        """,
-        (data["book_id"], data["member_id"], due_date, today.isoformat()),
+    loan = loan_repository.create_loan(
+        data,
+        due_date,
+        today.isoformat()
     )
-
-    conn.execute(
-        "UPDATE books SET available = 0 WHERE id = ?",
-        (data["book_id"],),
-    )
-
-    conn.commit()
-
-    loan = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (cursor.lastrowid,)
-    ).fetchone()
-
-    conn.close()
 
     write_notification(
         member[2],
@@ -180,48 +143,22 @@ def create_loan(data):
 
 
 def return_book(loan_id):
-    conn = sqlite3.connect(DB_NAME)
-
-    loan = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
+    loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        conn.close()
         return {"error": "loan not found"}, 404
 
     if loan[4] == 1:
-        conn.close()
         return {"error": "loan already returned"}, 409
 
     days_late = (date.today() - date.fromisoformat(loan[3])).days
     fine = max(0, days_late) * DAILY_FINE
 
-    conn.execute(
-        "UPDATE loans SET returned = 1, fine = ? WHERE id = ?",
-        (fine, loan_id),
-    )
+    loan_repository.return_loan(loan_id, loan[1], fine)
 
-    conn.execute(
-        "UPDATE books SET available = 1 WHERE id = ?",
-        (loan[1],),
-    )
-
-    conn.commit()
-
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (loan[2],)
-    ).fetchone()
-
-    book = conn.execute(
-        "SELECT * FROM books WHERE id = ?", (loan[1],)
-    ).fetchone()
-
-    updated = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
-
-    conn.close()
+    member = loan_repository.get_member(loan[2])
+    book = loan_repository.get_book(loan[1])
+    updated = loan_repository.get_loan(loan_id)
 
     write_notification(
         member[2],
@@ -233,56 +170,29 @@ def return_book(loan_id):
 
 
 def renew_loan(loan_id):
-    conn = sqlite3.connect(DB_NAME)
-
-    loan = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
+    loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        conn.close()
         return {"error": "loan not found"}, 404
 
     if loan[4] == 1:
-        conn.close()
         return {"error": "loan already returned"}, 409
 
     if date.fromisoformat(loan[3]) < date.today():
-        conn.close()
         return {"error": "overdue loans cannot be renewed"}, 409
 
     if loan[7] >= 1:
-        conn.close()
         return {"error": "loan was already renewed"}, 409
 
     new_due_date = (
         date.fromisoformat(loan[3]) + timedelta(days=LOAN_PERIOD)
     ).isoformat()
 
-    conn.execute(
-        """
-        UPDATE loans
-        SET due_date = ?, renewals = renewals + 1
-        WHERE id = ?
-        """,
-        (new_due_date, loan_id),
-    )
+    loan_repository.renew_loan(loan_id, new_due_date)
 
-    conn.commit()
-
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (loan[2],)
-    ).fetchone()
-
-    book = conn.execute(
-        "SELECT * FROM books WHERE id = ?", (loan[1],)
-    ).fetchone()
-
-    updated = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
-
-    conn.close()
+    member = loan_repository.get_member(loan[2])
+    book = loan_repository.get_book(loan[1])
+    updated = loan_repository.get_loan(loan_id)
 
     write_notification(
         member[2],
@@ -294,38 +204,21 @@ def renew_loan(loan_id):
 
 
 def pay_fine(loan_id):
-    conn = sqlite3.connect(DB_NAME)
-
-    loan = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
+    loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        conn.close()
         return {"error": "loan not found"}, 404
 
     if loan[4] == 0:
-        conn.close()
         return {"error": "return the book before paying"}, 409
 
     if loan[5] <= 0 or loan[6] == 1:
-        conn.close()
         return {"error": "no fine to pay"}, 409
 
-    conn.execute(
-        "UPDATE loans SET fine_paid = 1 WHERE id = ?", (loan_id,)
-    )
-    conn.commit()
+    loan_repository.pay_fine(loan_id)
 
-    member = conn.execute(
-        "SELECT * FROM members WHERE id = ?", (loan[2],)
-    ).fetchone()
-
-    updated = conn.execute(
-        "SELECT * FROM loans WHERE id = ?", (loan_id,)
-    ).fetchone()
-
-    conn.close()
+    member = loan_repository.get_member(loan[2])
+    updated = loan_repository.get_loan(loan_id)
 
     write_notification(
         member[2],
