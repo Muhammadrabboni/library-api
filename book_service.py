@@ -1,4 +1,5 @@
 
+from errors import error_response
 from utils.validation import is_valid_isbn
 import book_repository
 
@@ -29,12 +30,12 @@ def get_book(book_id):
 
 def create_book(data):
     if not data.get("title") or not data.get("author"):
-        return {"error": "title and author are required"}, 400
+        return error_response("title and author are required", 400)
 
     isbn = data.get("isbn")
 
     if not is_valid_isbn(isbn):
-        return {"error": "invalid isbn"}, 400
+        return error_response("invalid isbn", 400)
 
     row = book_repository.insert_book(data)
 
@@ -45,10 +46,10 @@ def delete_book(book_id):
     row = book_repository.get_book(book_id)
 
     if row is None:
-        return {"error": "book not found"}, 404
+        return error_response("book not found", 404)
 
     if row[4] == 0:
-        return {"error": "book is on loan"}, 409
+        return error_response("book is on loan", 409)
 
     book_repository.delete_book(book_id)
 

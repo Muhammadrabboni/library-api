@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from utils.validation import is_valid_date
 import loan_repository
+from errors import error_response
 from utils.fines import money, calculate_days_late, calculate_fine
 from utils.checks import (
     is_book_available,
@@ -65,30 +66,30 @@ def get_loan(loan_id):
     loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        return {"error": "loan not found"}, 404
+        return error_response("loan not found", 404)
 
     return loan_to_dict(loan, include_current_fine=True), 200
 
 
 def create_loan(data):
     if not data.get("book_id") or not data.get("member_id"):
-        return {"error": "book_id and member_id are required"}, 400
+        return error_response("book_id and member_id are required", 400)
 
     if data.get("due_date") and not is_valid_date(data["due_date"]):
-        return {"error": "invalid due_date"}, 400
+        return error_response("invalid due_date", 400)
 
     book = loan_repository.get_book(data["book_id"])
 
     if book is None:
-        return {"error": "book not found"}, 404
+        return error_response("book not found", 404)
 
     member = loan_repository.get_member(data["member_id"])
 
     if member is None:
-        return {"error": "member not found"}, 404
+        return error_response("member not found", 404)
 
     if not is_book_available(book):
-        return {"error": "book is not available"}, 409
+        return error_response("book is not available", 409)
 
     rows = loan_repository.get_member_loans(data["member_id"])
 
@@ -107,12 +108,12 @@ def create_loan(data):
             owed += loan[5]
 
     if owed > 0:
-        return {"error": "member has unpaid fines"}, 409
+        return error_response("member has unpaid fines", 409)
 
     limit = get_loan_limit(member)
 
     if open_loans >= limit:
-        return {"error": "loan limit reached"}, 409
+        return error_response("loan limit reached", 409)
 
     today = date.today()
     due_date = data.get("due_date") or (
@@ -138,10 +139,10 @@ def return_book(loan_id):
     loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        return {"error": "loan not found"}, 404
+        return error_response("loan not found", 404)
 
     if is_loan_returned(loan):
-        return {"error": "loan already returned"}, 409
+        return error_response("loan already returned", 409)
 
     fine = calculate_fine(loan[3])
 
@@ -164,16 +165,16 @@ def renew_loan(loan_id):
     loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        return {"error": "loan not found"}, 404
+        return error_response("loan not found", 404)
 
     if is_loan_returned(loan):
-        return {"error": "loan already returned"}, 409
+        return error_response("loan already returned", 409)
 
     if date.fromisoformat(loan[3]) < date.today():
-        return {"error": "overdue loans cannot be renewed"}, 409
+        return error_response("overdue loans cannot be renewed", 409)
 
     if loan[7] >= 1:
-        return {"error": "loan was already renewed"}, 409
+        return error_response("loan was already renewed", 409)
 
     new_due_date = (
         date.fromisoformat(loan[3]) + timedelta(days=LOAN_PERIOD)
@@ -198,13 +199,13 @@ def pay_fine(loan_id):
     loan = loan_repository.get_loan(loan_id)
 
     if loan is None:
-        return {"error": "loan not found"}, 404
+        return error_response("loan not found", 404)
 
     if loan[4] == 0:
-        return {"error": "return the book before paying"}, 409
+        return error_response("return the book before paying", 409)
 
     if not has_unpaid_fine(loan):
-        return {"error": "no fine to pay"}, 409
+        return error_response("no fine to pay", 409)
 
     loan_repository.pay_fine(loan_id)
 

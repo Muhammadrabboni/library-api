@@ -1,4 +1,5 @@
 from datetime import date
+from errors import error_response
 from utils.validation import is_valid_email, is_valid_member_type
 from utils.checks import get_loan_limit
 
@@ -30,22 +31,22 @@ def get_member(member_id):
 
 def create_member(data):
     if not data.get("name"):
-        return {"error": "name is required"}, 400
+        return error_response("name is required", 400)
 
     email = str(data.get("email", ""))
 
     if not is_valid_email(email):
-        return {"error": "invalid email"}, 400
+        return error_response("invalid email", 400)
 
     member_type = data.get("type", "student")
 
     if not is_valid_member_type(member_type):
-        return {"error": "type must be student or staff"}, 400
+        return error_response("type must be student or staff", 400)
 
     existing = member_repository.get_member_by_email(email)
 
     if existing is not None:
-        return {"error": "email already registered"}, 409
+        return error_response("email already registered", 409)
 
     member = member_repository.insert_member(
         data["name"],
@@ -60,7 +61,7 @@ def get_member_loans(member_id):
     member = member_repository.get_member(member_id)
 
     if member is None:
-        return {"error": "member not found"}, 404
+        return error_response("member not found", 404)
 
     rows = member_repository.get_member_loans(member_id)
 
