@@ -19,3 +19,6 @@ app.register_blueprint(report_bp)
 
 if not os.path.exists("library.db"):
     init_db()
+
+if __name__ == "__main__":
+    app.run(debug=True)
