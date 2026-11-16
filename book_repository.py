@@ -1,12 +1,8 @@
-
-import sqlite3
-
-
-DB_NAME = "library.db"
+import db
 
 
 def list_books(available_only=False):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     if available_only:
         rows = conn.execute(
@@ -20,11 +16,11 @@ def list_books(available_only=False):
 
 
 def get_book(book_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     row = conn.execute(
         "SELECT * FROM books WHERE id = ?",
-        (book_id,)
+        (book_id,),
     ).fetchone()
 
     conn.close()
@@ -32,7 +28,7 @@ def get_book(book_id):
 
 
 def insert_book(data):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     cursor = conn.execute(
         """
@@ -46,7 +42,7 @@ def insert_book(data):
 
     row = conn.execute(
         "SELECT * FROM books WHERE id = ?",
-        (cursor.lastrowid,)
+        (cursor.lastrowid,),
     ).fetchone()
 
     conn.close()
@@ -54,12 +50,23 @@ def insert_book(data):
 
 
 def delete_book(book_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     conn.execute(
         "DELETE FROM books WHERE id = ?",
-        (book_id,)
+        (book_id,),
     )
 
     conn.commit()
     conn.close()
+
+
+def count_books():
+    conn = db.connect()
+
+    total = conn.execute(
+        "SELECT COUNT(*) FROM books"
+    ).fetchone()[0]
+
+    conn.close()
+    return total

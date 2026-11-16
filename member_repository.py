@@ -1,23 +1,19 @@
-
-import sqlite3
-
-
-DB_NAME = "library.db"
+import db
 
 
 def list_members():
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
     rows = conn.execute("SELECT * FROM members").fetchall()
     conn.close()
     return rows
 
 
 def get_member(member_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     member = conn.execute(
         "SELECT * FROM members WHERE id = ?",
-        (member_id,)
+        (member_id,),
     ).fetchone()
 
     conn.close()
@@ -25,11 +21,11 @@ def get_member(member_id):
 
 
 def get_member_by_email(email):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     member = conn.execute(
         "SELECT * FROM members WHERE email = ?",
-        (email,)
+        (email,),
     ).fetchone()
 
     conn.close()
@@ -37,7 +33,7 @@ def get_member_by_email(email):
 
 
 def insert_member(name, email, member_type):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     cursor = conn.execute(
         "INSERT INTO members (name, email, type) VALUES (?, ?, ?)",
@@ -48,7 +44,7 @@ def insert_member(name, email, member_type):
 
     member = conn.execute(
         "SELECT * FROM members WHERE id = ?",
-        (cursor.lastrowid,)
+        (cursor.lastrowid,),
     ).fetchone()
 
     conn.close()
@@ -56,11 +52,11 @@ def insert_member(name, email, member_type):
 
 
 def get_member_loans(member_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = db.connect()
 
     rows = conn.execute(
         "SELECT * FROM loans WHERE member_id = ?",
-        (member_id,)
+        (member_id,),
     ).fetchall()
 
     conn.close()
